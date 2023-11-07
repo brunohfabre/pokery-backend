@@ -1,0 +1,44 @@
+@baseUrl = http://localhost:3333
+@authToken = {{authenticate.response.body.token}}
+
+# @name register
+POST {{baseUrl}}/register
+Content-Type: application/json
+
+{
+  "name": "Bruno Fabre",
+  "email": "bruno.hfabre@gmail.com"
+}
+
+###
+
+# @name verify-mail
+POST {{baseUrl}}/verify-mail
+Content-Type: application/json
+
+{
+  "email": "bruno.hfabre@gmail.com",
+  "verificationCode": "412CFE"
+}
+
+###
+
+# @name password
+POST {{baseUrl}}/password
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkMjg3MGI4ZS1mYWQzLTQ4ZTYtOGFjZi0xOTI2OWVmNzUyNGEiLCJpYXQiOjE2OTkzMjI3MzN9.YGOdxcxfS3V0BhjA4GL-j_J7fuQbY8ERzhj3xCZnQxo
+
+{
+  "password": "abcd1234"
+}
+
+###
+
+# @name authenticate
+POST {{baseUrl}}/sessions
+Content-Type: application/json
+
+{
+  "email": "bruno.hfabre@gmail.com",
+  "password": "abcd1234"
+}
