@@ -110,6 +110,46 @@ export async function appRoutes(app: FastifyInstance) {
     })
   })
 
+  app.post('/resend-code', async (request, reply) => {
+    const bodySchema = z.object({
+      email: z.string().min(1).email(),
+    })
+    const { email } = bodySchema.parse(request.body)
+
+    const userExists = await prisma.user.findUnique({
+      where: {
+        email,
+      },
+    })
+
+    if (!userExists) {
+      throw new ResourceNotFound()
+    }
+
+    const verificationCode = generateVerificationCode()
+
+    const user = await prisma.user.update({
+      where: {
+        email,
+      },
+      data: {
+        verificationCode,
+      },
+    })
+
+    await transporter.sendMail({
+      from: 'Pokery <noreply@pokery.com.br>',
+      to: {
+        name: user.name,
+        address: email,
+      },
+      subject: 'Verification code',
+      html: `Verification code: ${verificationCode}`,
+    })
+
+    return reply.status(204).send()
+  })
+
   app.post('/password', { onRequest: [verifyJwt] }, async (request, reply) => {
     const bodySchema = z.object({
       password: z.string().min(6),
