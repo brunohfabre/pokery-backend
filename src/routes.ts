@@ -7,6 +7,7 @@ import { env } from './env'
 import { InvalidCredentialsError } from './errors/invalid-credentials'
 import { ResourceAlreadyExistsError } from './errors/resource-already-exists'
 import { ResourceNotFound } from './errors/resource-not-found'
+import { Unauthorized } from './errors/unauthorized'
 import { UserAlreadyExistsError } from './errors/user-already-exists'
 import { prisma } from './lib/prisma'
 import { verifyJwt } from './middlewares/verify-jwt'
@@ -24,6 +25,82 @@ const mailConfig = {
 const transporter = nodemailer.createTransport(mailConfig)
 
 export async function appRoutes(app: FastifyInstance) {
+  // Sessions
+  app.post('/sessions', async (request, reply) => {
+    const bodySchema = z.object({
+      email: z.string().min(1).email(),
+      password: z.string().min(6),
+    })
+    const { email, password } = bodySchema.parse(request.body)
+
+    const userExists = await prisma.user.findUnique({
+      where: {
+        email,
+      },
+    })
+
+    if (!userExists) {
+      throw new ResourceNotFound()
+    }
+
+    const doesPasswordMatches = await compare(
+      password,
+      userExists.passwordHash ?? '',
+    )
+
+    if (!doesPasswordMatches) {
+      throw new InvalidCredentialsError()
+    }
+
+    const token = await reply.jwtSign(
+      {},
+      {
+        sign: {
+          sub: userExists.id,
+        },
+      },
+    )
+
+    return reply.send({
+      token,
+      user: {
+        ...userExists,
+        passwordHash: undefined,
+      },
+    })
+  })
+
+  app.get('/me', { onRequest: [verifyJwt] }, async (request, reply) => {
+    const userId = request.user.sub
+
+    const user = await prisma.user.findFirst({
+      where: {
+        id: userId,
+      },
+    })
+
+    if (!user) {
+      throw new Unauthorized()
+    }
+
+    const token = await reply.jwtSign(
+      {},
+      {
+        sign: {
+          sub: userId,
+        },
+      },
+    )
+
+    return reply.send({
+      token,
+      user: {
+        ...user,
+        passwordHash: undefined,
+      },
+    })
+  })
+
   // Users
   app.post('/register', async (request, reply) => {
     const bodySchema = z.object({
@@ -198,48 +275,66 @@ export async function appRoutes(app: FastifyInstance) {
     })
   })
 
-  // Sessions
-  app.post('/sessions', async (request, reply) => {
-    const bodySchema = z.object({
-      email: z.string().min(1).email(),
-      password: z.string().min(6),
-    })
-    const { email, password } = bodySchema.parse(request.body)
+  // Matches
+  app.post(
+    '/find-match',
+    { onRequest: [verifyJwt] },
+    async (request, reply) => {
+      const userId = request.user.sub
 
-    const userExists = await prisma.user.findUnique({
-      where: {
-        email,
-      },
-    })
-
-    if (!userExists) {
-      throw new ResourceNotFound()
-    }
-
-    const doesPasswordMatches = await compare(
-      password,
-      userExists.passwordHash ?? '',
-    )
-
-    if (!doesPasswordMatches) {
-      throw new InvalidCredentialsError()
-    }
-
-    const token = await reply.jwtSign(
-      {},
-      {
-        sign: {
-          sub: userExists.id,
+      const matchExists = await prisma.match.findFirst({
+        where: {
+          stages: {
+            every: {
+              NOT: {
+                type: 'START',
+              },
+            },
+          },
         },
-      },
-    )
+        include: {
+          players: true,
+        },
+      })
 
-    return reply.send({
-      token,
-      user: {
-        ...userExists,
-        passwordHash: undefined,
-      },
-    })
-  })
+      if (matchExists) {
+        const findPlayer = matchExists.players.find(
+          (player) => player.id === userId,
+        )
+
+        if (!findPlayer) {
+          await prisma.match.update({
+            where: {
+              id: matchExists.id,
+            },
+            data: {
+              players: {
+                connect: {
+                  id: userId,
+                },
+              },
+            },
+          })
+        }
+
+        return reply.send({
+          match: matchExists,
+        })
+      }
+
+      const match = await prisma.match.create({
+        data: {
+          players: {
+            connect: {
+              id: userId,
+            },
+          },
+        },
+      })
+
+      return reply.send({
+        match,
+      })
+    },
+  )
 }

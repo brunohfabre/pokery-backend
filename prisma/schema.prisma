@@ -17,27 +17,41 @@ model User {
   emailVerifiedAt  DateTime?
   createdAt        DateTime  @default(now())
 
-  tables Table[]
+  matches Match[]
 
   @@map("users")
 }
 
-model Table {
+model Match {
   id        String   @id @default(uuid())
-  stages    Stage[]
-  players   User[]
   createdAt DateTime @default(now())
 
-  @@map("tables")
+  stages  Stage[]
+  players User[]
+
+  @@map("matches")
+}
+
+enum StageType {
+  START
+  FINISH
+  FLOP
+  TURN
+  RIVER
+  FOLD
+  CALL
+  CHECK
+  RAISE
 }
 
 model Stage {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
+  type      StageType
   data      Json
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
-  tableId String
-  table   Table  @relation(fields: [tableId], references: [id])
+  matchId String
+  match   Match  @relation(fields: [matchId], references: [id])
 
   @@map("stages")
 }

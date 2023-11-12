@@ -8,6 +8,7 @@ import { env } from './env'
 import { InvalidCredentialsError } from './errors/invalid-credentials'
 import { ResourceAlreadyExistsError } from './errors/resource-already-exists'
 import { ResourceNotFound } from './errors/resource-not-found'
+import { Unauthorized } from './errors/unauthorized'
 import { UserAlreadyExistsError } from './errors/user-already-exists'
 import { appRoutes } from './routes'
 
@@ -25,6 +26,12 @@ app.setErrorHandler((error, _, reply) => {
     return reply.status(400).send({
       message: 'Validation error.',
       issues: error.errors,
+    })
+  }
+
+  if (error instanceof Unauthorized) {
+    return reply.status(401).send({
+      message: error.message,
     })
   }
 

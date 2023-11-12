@@ -5,6 +5,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "dev:debug": "ts-node-dev -r tsconfig-paths/register --inspect --transpile-only --ignore-watch node_modules src/server.ts",
     "start": "node dist/server.js",
     "build": "tsup src --out-dir dist"
   },
@@ -15,6 +16,7 @@
     "@types/nodemailer": "^6.4.13",
     "eslint": "^8.53.0",
     "prisma": "^5.5.2",
+    "ts-node-dev": "^2.0.0",
     "tsup": "^7.2.0",
     "tsx": "^3.14.0",
     "typescript": "^5.2.2"
