@@ -1,3 +1,6 @@
 {
-  "extends": "@siakit/eslint-config/react"
+  "extends": "@siakit/eslint-config/react",
+  "rules": {
+    "n/no-callback-literal": "off"
+  }
 }

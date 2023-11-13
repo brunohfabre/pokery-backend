@@ -11,6 +11,7 @@ import { ResourceNotFound } from './errors/resource-not-found'
 import { Unauthorized } from './errors/unauthorized'
 import { UserAlreadyExistsError } from './errors/user-already-exists'
 import { appRoutes } from './routes'
+import { fastifySocketIO } from './socket'
 
 const app = fastify()
 
@@ -18,6 +19,7 @@ app.register(fastifyCors)
 app.register(fastifyJwt, {
   secret: env.JWT_SECRET,
 })
+app.register(fastifySocketIO)
 
 app.register(appRoutes)
 
