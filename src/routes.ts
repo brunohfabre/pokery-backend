@@ -130,7 +130,7 @@ export async function appRoutes(app: FastifyInstance) {
     })
 
     await transporter.sendMail({
-      from: 'Royal Poker <noreply@royal-poker.com.br>',
+      from: 'Royale Poker <noreply@royale-poker.com.br>',
       to: {
         name,
         address: email,
@@ -215,7 +215,7 @@ export async function appRoutes(app: FastifyInstance) {
     })
 
     await transporter.sendMail({
-      from: 'Royal Poker <noreply@royal-poker.com.br>',
+      from: 'Royale Poker <noreply@royale-poker.com.br>',
       to: {
         name: user.name,
         address: email,
