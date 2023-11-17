@@ -1,5 +1,8 @@
 {
   "extends": "@siakit/eslint-config/react",
+  "globals": {
+    "NodeJS": true
+  },
   "rules": {
     "n/no-callback-literal": "off"
   }
