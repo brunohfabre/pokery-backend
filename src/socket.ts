@@ -1,44 +1,77 @@
 import { randomUUID } from 'crypto'
 import { FastifyInstance } from 'fastify'
+import _ from 'lodash'
 import { Server } from 'socket.io'
+
+import { prisma } from './lib/prisma'
 
 export let io: Server
 
 type MatchType = {
   id: string
+  countdown: any
   players: { id: string; name: string; ready: boolean }[]
 }
 
 const players: Record<string, string> = {}
-let matches: MatchType[] = []
-
-let startMatchCountdown: any
+let matches: Record<string, MatchType> = {}
 
 function verifyCountdown({ matchId }: { matchId: string }) {
-  const findMatch = matches.find((match) => match.id === matchId)
+  const findMatch = matches[matchId]
 
   if (!findMatch) {
     return
   }
 
+  if (!findMatch.players.length) {
+    matches = _.omit(matches, [matchId])
+
+    return
+  }
+
   const allPlayersReady = findMatch.players.every((player) => player.ready)
 
-  if (
-    findMatch.players.length > 1 &&
-    allPlayersReady &&
-    (!startMatchCountdown || startMatchCountdown?._idleTimeout === -1)
-  ) {
-    io.emit(`match.${matchId}.countdown.start`)
+  if (allPlayersReady && findMatch.players.length > 1) {
+    matches[matchId] = {
+      ...findMatch,
+      countdown: setTimeout(async () => {
+        const match = await prisma.match.create({
+          data: {
+            players: {
+              connect: findMatch.players.map((player) => ({
+                id: player.id,
+              })),
+            },
+            stages: {
+              create: {
+                type: 'START',
+                data: {},
+              },
+            },
+          },
+        })
 
-    startMatchCountdown = setTimeout(() => {
-      io.emit(`match.${matchId}.start`)
-    }, 10 * 1000)
-  } else {
-    if (!!startMatchCountdown && startMatchCountdown?._idleTimeout !== -1) {
-      io.emit(`match.${matchId}.countdown.stop`)
+        matches = _.omit(matches, [matchId])
 
-      clearTimeout(startMatchCountdown)
+        io.emit(`match.${matchId}.start`, {
+          matchId: match.id,
+        })
+      }, 10 * 1000),
     }
+
+    io.emit(`match.${matchId}.countdown.start`)
+  } else {
+    if (!findMatch.countdown) {
+      return
+    }
+
+    if (findMatch.countdown?._idleTimeout === -1) {
+      return
+    }
+
+    clearTimeout(findMatch.countdown)
+
+    io.emit(`match.${matchId}.countdown.stop`)
   }
 }
 
@@ -53,54 +86,47 @@ export async function fastifySocketIO(app: FastifyInstance) {
     socket.on('disconnect', () => {
       const userId = players[socket.id]
 
-      const findMatch = matches.find((match) =>
-        match.players.some((player) => player.id === userId),
+      const findMatchId = Object.keys(matches).find((key) =>
+        matches[key].players.some((player) => player.id === userId),
       )
 
-      if (!findMatch) {
+      if (!findMatchId) {
         return
       }
 
-      matches = matches.map((match) =>
-        match.players.some((player) => player.id === userId)
-          ? {
-              ...match,
-              players: match.players.filter((player) => player.id !== userId),
-            }
-          : match,
-      )
+      matches[findMatchId] = {
+        ...matches[findMatchId],
+        players: matches[findMatchId].players.filter(
+          (player) => player.id !== userId,
+        ),
+      }
 
-      io.emit(`match.${findMatch.id}.player.exited`, {
+      io.emit(`match.${findMatchId}.player.exited`, {
         playerId: userId,
       })
 
       verifyCountdown({
-        matchId: findMatch.id,
+        matchId: findMatchId,
       })
     })
 
     socket.on('find-match', ({ player }, cb: any) => {
-      const findMatch = matches.find((match) => match.players.length < 9)
+      const findMatchId = Object.keys(matches).find(
+        (key) => matches[key].players.length < 9,
+      )
 
-      if (findMatch) {
-        if (findMatch.players.some((item) => item.id === player.id)) {
-          cb({
-            match: findMatch,
-          })
-
-          return
+      if (findMatchId) {
+        const matchUpdated = {
+          ...matches[findMatchId],
+          players: [
+            ...matches[findMatchId].players,
+            { ...player, ready: false },
+          ],
         }
 
-        const newMatch = {
-          ...findMatch,
-          players: [...findMatch.players, { ...player, ready: false }],
-        }
+        matches[findMatchId] = matchUpdated
 
-        matches = matches.map((match) =>
-          match.id === findMatch.id ? newMatch : match,
-        )
-
-        io.emit(`match.${findMatch.id}.player.joined`, {
+        io.emit(`match.${findMatchId}.player.joined`, {
           player: {
             ...player,
             ready: false,
@@ -108,11 +134,11 @@ export async function fastifySocketIO(app: FastifyInstance) {
         })
 
         verifyCountdown({
-          matchId: newMatch.id,
+          matchId: findMatchId,
         })
 
         cb({
-          match: newMatch,
+          match: matchUpdated,
         })
 
         return
@@ -122,14 +148,11 @@ export async function fastifySocketIO(app: FastifyInstance) {
 
       const match = {
         id: matchId,
+        countdown: null,
         players: [{ ...player, ready: false }],
       }
 
-      matches.push(match)
-
-      verifyCountdown({
-        matchId: match.id,
-      })
+      matches[matchId] = match
 
       cb({
         match,
@@ -137,40 +160,38 @@ export async function fastifySocketIO(app: FastifyInstance) {
     })
 
     socket.on('match.get', ({ matchId }, cb) => {
-      const findMatch = matches.find((match) => match.id === matchId)
+      const findMatch = matches[matchId]
 
       cb({ match: findMatch })
     })
 
     socket.on('match.exit', ({ playerId }) => {
-      const findMatch = matches.find((match) =>
-        match.players.some((player) => player.id === playerId),
+      const findMatchId = Object.keys(matches).find((key) =>
+        matches[key].players.some((player) => player.id === playerId),
       )
 
-      if (!findMatch) {
+      if (!findMatchId) {
         return
       }
 
-      matches = matches.map((match) =>
-        match.players.some((player) => player.id === playerId)
-          ? {
-              ...match,
-              players: match.players.filter((player) => player.id !== playerId),
-            }
-          : match,
-      )
+      matches[findMatchId] = {
+        ...matches[findMatchId],
+        players: matches[findMatchId].players.filter(
+          (player) => player.id !== playerId,
+        ),
+      }
 
-      io.emit(`match.${findMatch.id}.player.exited`, {
+      io.emit(`match.${findMatchId}.player.exited`, {
         playerId,
       })
 
       verifyCountdown({
-        matchId: findMatch.id,
+        matchId: findMatchId,
       })
     })
 
     socket.on('match.player.change-ready', ({ matchId, playerId }) => {
-      const findMatch = matches.find((match) => match.id === matchId)
+      const findMatch = matches[matchId]
 
       if (!findMatch) {
         return
@@ -196,7 +217,7 @@ export async function fastifySocketIO(app: FastifyInstance) {
         ready: !findPlayer.ready,
       }
 
-      matches = matches.map((match) => (match.id ? newMatch : match))
+      matches[matchId] = newMatch
 
       io.emit(`match.${matchId}.player.changed`, {
         player: newPlayerState,

@@ -83,6 +83,42 @@ export async function appRoutes(app: FastifyInstance) {
       throw new Unauthorized()
     }
 
+    const matchInProgress = await prisma.match.findFirst({
+      where: {
+        players: {
+          some: {
+            id: userId,
+          },
+        },
+        stages: {
+          every: {
+            AND: [
+              {
+                type: {
+                  not: 'FINISH',
+                },
+              },
+              {
+                OR: [
+                  {
+                    type: {
+                      not: 'EXIT',
+                    },
+                  },
+                  {
+                    type: 'EXIT',
+                    stageBy: {
+                      not: userId,
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      },
+    })
+
     const token = await reply.jwtSign(
       {},
       {
@@ -98,6 +134,7 @@ export async function appRoutes(app: FastifyInstance) {
         ...user,
         passwordHash: undefined,
       },
+      matchInProgress,
     })
   })
 
@@ -335,6 +372,103 @@ export async function appRoutes(app: FastifyInstance) {
       return reply.send({
         match,
       })
+    },
+  )
+
+  app.get('/matches', { onRequest: [verifyJwt] }, async (request, reply) => {
+    const userId = request.user.sub
+
+    const matches = await prisma.match.findMany({
+      where: {
+        players: {
+          some: {
+            id: userId,
+          },
+        },
+      },
+      include: {
+        stages: {
+          where: {
+            OR: [
+              {
+                type: 'FINISH',
+              },
+              {
+                type: 'EXIT',
+                stageBy: userId,
+              },
+            ],
+          },
+          take: 1,
+          orderBy: {
+            createdAt: 'desc',
+          },
+        },
+      },
+    })
+
+    return reply.send({
+      matches,
+    })
+  })
+
+  app.post(
+    '/matches/:id/exit',
+    { onRequest: [verifyJwt] },
+    async (request, reply) => {
+      const paramsSchema = z.object({
+        id: z.string().min(1),
+      })
+      const { id } = paramsSchema.parse(request.params)
+
+      const userId = request.user.sub
+
+      const matchExists = await prisma.match.findFirst({
+        where: {
+          id,
+          players: {
+            some: {
+              id: userId,
+            },
+          },
+        },
+        include: {
+          players: true,
+        },
+      })
+
+      if (!matchExists) {
+        throw new ResourceNotFound()
+      }
+
+      if (matchExists.players.length > 2) {
+        await prisma.stage.create({
+          data: {
+            data: {},
+            type: 'EXIT',
+            matchId: id,
+            stageBy: userId,
+          },
+        })
+      } else {
+        await prisma.stage.createMany({
+          data: [
+            {
+              data: {},
+              type: 'EXIT',
+              matchId: id,
+              stageBy: userId,
+            },
+            {
+              data: {},
+              type: 'FINISH',
+              matchId: id,
+            },
+          ],
+        })
+      }
+
+      return reply.status(204).send()
     },
   )
 }

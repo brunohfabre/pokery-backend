@@ -1,6 +1,6 @@
 @baseUrl = http://localhost:3333
-@verifyMailToken = {{verify.response.body.token}}
-@authToken = {{authenticate.response.body.token}}
+@verifyMailToken = Bearer {{verify.response.body.token}}
+@authToken = Bearer {{authenticate.response.body.token}}
 
 # @name register
 POST {{baseUrl}}/register
@@ -27,7 +27,7 @@ Content-Type: application/json
 # @name password
 POST {{baseUrl}}/password
 Content-Type: application/json
-Authorization: Bearer {{verifyMailToken}}
+Authorization: {{verifyMailToken}}
 
 {
   "password": "abcd1234"
@@ -40,6 +40,12 @@ POST {{baseUrl}}/sessions
 Content-Type: application/json
 
 {
-  "email": "bruno.hfabre@gmail.com",
+  "email": "jhondoe@gmail.com",
   "password": "abcd1234"
 }
+
+###
+
+# @name fetchMatches
+GET {{baseUrl}}/matches
+Authorization: {{authToken}}
